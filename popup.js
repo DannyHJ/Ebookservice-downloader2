@@ -91,7 +91,7 @@ function downloadPDF() {
     var arrayOpts = bookDocument.querySelectorAll(".bottom_page1_text option"); //page combobox
     //console.log(arrayOpts.length);
     if (arrayOpts.length != 0) {
-        pages = (arrayOpts.length - 1) * 2; //calculate  amount of pages
+        pages = (arrayOpts.length - 1) * 2 + 1; //calculate amount of pages
         console.log("Page length:" + pages);
     } else {
         flag = false;
@@ -259,7 +259,7 @@ function downloadePub() {
     myRe = new RegExp('token: \'(.*)\'', 'g');
     var token = myRe.exec(script)[1];
     myRe = new RegExp('bookToken: \'(.*)\'', 'g');
-    var bookToken = myRe.exec(script)[1];
+    var bookToken = myRe.exec(script)[1]? myRe.exec(script)[1] + "/null": "null";
     myRe = new RegExp('format: \'(.*)\'', 'g');
     var format = myRe.exec(script)[1];
 
@@ -276,16 +276,14 @@ function downloadePub() {
 
     if (flag) {
         links = [];
-        links.push(rootUrl + '/epub/fetch/' + bookId + '/' + newToken + '/' + bookToken + '/META-INF/container.xml'); //add container to queue
-        var contentUrl = rootUrl + '/epub/fetch/' + bookId + '/' + newToken + '/' + bookToken + '/OEBPS/';
-        console.log(contentUrl + 'content.opf');
-        links.push(contentUrl + 'content.opf'); //add opf to queue
-        var content = httpGet(contentUrl + 'content.opf');
-        console.log(content);
+        links.push(rootUrl + '/api/epub/fetch/' + bookId + '/' + newToken + '/' + bookToken + '/META-INF/container.xml'); //add container to queue
+        const [contentUrl, content, fireName, title] = get_url(rootUrl, bookId, newToken)
+        console.log(contentUrl + fireName + '.opf');
+        
         parser = new DOMParser();
         contentDoc = parser.parseFromString(content, 'text/xml');
 
-        myRe = new RegExp('<dc:title>(.*)</dc:title>', 'g');
+        myRe = new RegExp(title, 'g');
         var bookName = myRe.exec(content)[1];
 
         // var title = contentDoc.querySelectorAll('metadata');
@@ -308,6 +306,35 @@ function downloadePub() {
     //http://voler.ebookservice.tw/epub/fetch/bookId/token/bookToken/OEBPS/content.opf
 
     //http://voler.ebookservice.tw/epub/fetch/bookId/token/bookToken/OEBPS/image/2AL950demo_forylib.png
+}
+
+function get_url(rootUrl, bookId, newToken){
+    let 
+        http = [
+            '/null/OEBPS/',
+            '/null/item/'
+        ],
+        fireName = [
+            'content',
+            'standard'
+        ],
+        title = [
+            '<dc:title>(.*)</dc:title>',
+            '<dc:title id="title">(.*)</dc:title>'
+        ],
+        count = 0,
+        ary_count = http.length;
+
+    for(i=0; i<ary_count; i++){
+        let contentUrl = rootUrl + '/api/epub/fetch/' + bookId + '/' + newToken + http[i];
+        let content = httpGet(contentUrl + fireName[i] + '.opf');
+
+        if(content != ''){
+            links.push(contentUrl + fireName[i] + '.opf'); //add opf to queue
+            return [contentUrl, content, fireName[i], title[i]];
+        }
+    }
+
 }
 
 function httpGet(theUrl) {
@@ -345,7 +372,7 @@ chrome.downloads.onChanged.addListener(function(delta) {
 });
 
 // Download all visible checked links.
-function downloadLinks(link, dir, indexLocal, modeAction) {
+function downloadLinks(link, dir, indexLocal, modeAction, str) {
     var pageNum = padLeft((indexLocal + 1), 3);
     renderStatus('下載中，請勿離開此頁面(' + pageNum + '/' + link.length + ')');
     var file
@@ -356,16 +383,20 @@ function downloadLinks(link, dir, indexLocal, modeAction) {
         console.log(link[indexLocal]);
     } else if (modeAction == 'epub') {
         var filename
-        if (link[indexLocal].indexOf('/OEBPS/') >= 0) {
-            filename = link[indexLocal].substring(link[indexLocal].indexOf('/OEBPS/') + 1);
-        } else if (link[indexLocal].indexOf('/META-INF/') >= 0) {
-            filename = link[indexLocal].substring(link[indexLocal].indexOf('/META-INF/') + 1);
+        console.log(link[indexLocal]);
+        if (link[indexLocal].indexOf('/META-INF') >= 0) {
+            filename = link[indexLocal].substring(link[indexLocal].indexOf('/META-INF') + 1);
+        } else if (link[indexLocal].indexOf('/OEBPS') >= 0) {
+            filename = link[indexLocal].substring(link[indexLocal].indexOf('/OEBPS') + 1);
+        } else if (link[indexLocal].indexOf('/item') >= 0) {
+            filename = link[indexLocal].substring(link[indexLocal].indexOf('/item') + 1);
         }
         //var filename = link[indexLocal].split('/').pop()
         file = "" + dir + "/" + filename;
         console.log(filename + ' ' + link[indexLocal]);
     }
     index = indexLocal + 1;
+
     //need reload permissions
     chrome.downloads.download({
             url: link[indexLocal],
